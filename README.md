@@ -1,5 +1,5 @@
 run 
-```
+```shell
 cd rxvt-unicode
 ./configure \
     --prefix=/usr \
@@ -28,3 +28,6 @@ cd rxvt-unicode
     --enable-xim \
     --enable-xterm-scroll
 make -j8
+```
+
+Then run your distro's favorite replacement of `make install`. For instance, run `sudo checkinstall` for Ubuntu/Debian.
