@@ -1,0 +1,124 @@
+TODO: 
+08:30:06 <b_jonas> I think it could be worth to add a macro that works like alignof or _Alignof on sane 
+                   compilers, and like __alignof on MS compilers that support it, see 
+                   http://msdn.microsoft.com/en-us/library/45t0s5f4.aspx
+08:30:24 <b_jonas> even if you can't support it on all the old compilers
+08:31:17 <b_jonas> I'd also like a macro for alignas, but sadly, that seems impossible in general, because 
+                   the MS compiler only has some half-attempt to do something similar but with different and 
+                   more broken semantics, see http://msdn.microsoft.com/en-us/library/83ythb65.aspx
+08:31:35 <b_jonas> but I wonder if some special case could still be worth to support
+08:32:23 <b_jonas> probably not, because it would just account to making a union with a highly aligned type, 
+                   which is something I can do on any compiler portably
+
+TODO: #define ECB_IS_INTEGRAL(x) !((1 ? 1 : (x)) / 2)
+      #define ECB_IS_INTEGRAL(x) (sizeof ((x) + 1.0f) != sizeof((x) + 1ULL))
+
+TODO: __builtin_powi
+
+TODO: https://gustedt.wordpress.com/2010/06/08/detect-empty-macro-arguments/
+
+implement is_constant for c11: https://gustedt.wordpress.com/2013/08/22/testing-compile-time-constness-and-null-pointers-with-c11s-_generic/
+
+#ifdef _MSC_VER
+
+#include <stdlib.h>
+#define bswap_32(x) _byteswap_ulong(x)
+#define bswap_64(x) _byteswap_uint64(x)
+
+#elif defined(__APPLE__)
+
+// Mac OS X / Darwin features
+#include <libkern/OSByteOrder.h>
+#define bswap_32(x) OSSwapInt32(x)
+#define bswap_64(x) OSSwapInt64(x)
+
+#elif defined(__sun) || defined(sun)
+
+#include <sys/byteorder.h>
+#define bswap_32(x) BSWAP_32(x)
+#define bswap_64(x) BSWAP_64(x)
+
+#elif defined(__FreeBSD__)
+
+#include <sys/endian.h>
+#define bswap_32(x) bswap32(x)
+#define bswap_64(x) bswap64(x)
+
+#elif defined(__OpenBSD__)
+
+#include <sys/types.h>
+#define bswap_32(x) swap32(x)
+#define bswap_64(x) swap64(x)
+
+#elif defined(__NetBSD__)
+
+#include <sys/types.h>
+#include <machine/bswap.h>
+#if defined(__BSWAP_RENAME) && !defined(__bswap_32)
+#define bswap_32(x) bswap32(x)
+#define bswap_64(x) bswap64(x)
+#endif
+
+#else
+
+#include <byteswap.h>
+
+#endif
+
+	- apply ctz/ld patch for msc by Zsbán Ambrus.
+        - ECB_PTRSIZE erroneously was 8 on most 32bit systems (
+          found by Zsbán Ambrus).
+        - improved compiletime detection of endianness, also, allow
+          runtime detection to indicate other-than-big/little endianness.
+        - no memory barrier neded on arm < 6.
+
+0x00010005
+	- improve ecb_binary16_to_float.
+        - add ecb_float_to_binary16.
+        - add ecb_binary16_to_binary32 and ecb_binary32_to_binary16 pair.
+
+0x00010001
+	- add ecb_is_pot32/64.
+        - add intptr_t/uintptr_t.
+        - add ECB_PTRSIZE.
+        - more macros for C/C++ version checks.
+        - support C11 atomics for memory fences.
+        - support gcc-4.7 atomics for memory fences.
+        - support m68k, m88k and sh (patch by Miod Vallat).
+        - add ecb_binary16_to_float.
+
+TODO: ecb_restrict_array etc. http://ue.tst.eu/5093eafd713ec5fda776d8065070aa4c.txt
+TODO: ffs
+64 bit variants of everything
+TODO: examples from X for clz/ctz
+TODO: arithmetic right shift
+TODO: template/generic functions for x32/x64 and so on
+TODO: #define ecb_integer_multiples_of(n,d) ((char (*)[d])(n) - (char (*)[d])0)
+TODO: generalised shift
+TODO: #define ECB_FAST_UNALIGNED_ACCESS
+unsigned long gensh(unsigned long v, int x) {
+int a, b;
+    a = (v << x) & -(((unsigned int)x) < 32);
+    x = -x;
+    b = (v >> x) & -(((unsigned int)x) < 32);
+    return a|b;
+}
+
+TODO: export(=dllexport) & hidden
+TODO: flatten
+TODO: warning(msg)
+TODO: error(msg)
+TODO: leaf (uh), noclone (hmmm)
+TODO: nonnull, returns_nonnull
+TODO: nothrow
+TODO: used
+TODO: trap
+TODO: http://llvm.org/docs/doxygen/html/Compiler_8h_source.html
+
+TODO: read/write unaligned macros
+TODO: htonl and friends
+TODO: macro to convert from unsigned to signed "the natural way"
+TODO: ecb_static_assert, with message (just like boost), or somesuch, using array-declaration
+TODO: alignof
+
+

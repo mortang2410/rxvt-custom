@@ -1,0 +1,881 @@
+=head1 LIBECB - e-C-Builtins
+
+=head2 ABOUT LIBECB
+
+Libecb is currently a simple header file that doesn't require any
+configuration to use or include in your project.
+
+It's part of the e-suite of libraries, other members of which include
+libev and libeio.
+
+Its homepage can be found here:
+
+    http://software.schmorp.de/pkg/libecb
+
+It mainly provides a number of wrappers around GCC built-ins, together
+with replacement functions for other compilers. In addition to this,
+it provides a number of other lowlevel C utilities, such as endianness
+detection, byte swapping or bit rotations.
+
+Or in other words, things that should be built into any standard C system,
+but aren't, implemented as efficient as possible with GCC, and still
+correct with other compilers.
+
+More might come.
+
+=head2 ABOUT THE HEADER
+
+At the moment, all you have to do is copy F<ecb.h> somewhere where your
+compiler can find it and include it:
+
+   #include <ecb.h>
+
+The header should work fine for both C and C++ compilation, and gives you
+all of F<inttypes.h> in addition to the ECB symbols.
+
+There are currently no object files to link to - future versions might
+come with an (optional) object code library to link against, to reduce
+code size or gain access to additional features.
+
+It also currently includes everything from F<inttypes.h>.
+
+=head2 ABOUT THIS MANUAL / CONVENTIONS
+
+This manual mainly describes each (public) function available after
+including the F<ecb.h> header. The header might define other symbols than
+these, but these are not part of the public API, and not supported in any
+way.
+
+When the manual mentions a "function" then this could be defined either as
+as inline function, a macro, or an external symbol.
+
+When functions use a concrete standard type, such as C<int> or
+C<uint32_t>, then the corresponding function works only with that type. If
+only a generic name is used (C<expr>, C<cond>, C<value> and so on), then
+the corresponding function relies on C to implement the correct types, and
+is usually implemented as a macro. Specifically, a "bool" in this manual
+refers to any kind of boolean value, not a specific type.
+
+=head2 TYPES / TYPE SUPPORT
+
+ecb.h makes sure that the following types are defined (in the expected way):
+
+   int8_t   uint8_t   int16_t  uint16_t
+   int32_t  uint32_t  int64_t  uint64_t
+   intptr_t uintptr_t
+
+The macro C<ECB_PTRSIZE> is defined to the size of a pointer on this
+platform (currently C<4> or C<8>) and can be used in preprocessor
+expressions.
+
+For C<ptrdiff_t> and C<size_t> use C<stddef.h>.
+
+=head2 LANGUAGE/ENVIRONMENT/COMPILER VERSIONS
+
+All the following symbols expand to an expression that can be tested in
+preprocessor instructions as well as treated as a boolean (use C<!!> to
+ensure it's either C<0> or C<1> if you need that).
+
+=over 4
+
+=item ECB_C
+
+True if the implementation defines the C<__STDC__> macro to a true value,
+while not claiming to be C++.
+
+=item ECB_C99
+
+True if the implementation claims to be compliant to C99 (ISO/IEC
+9899:1999) or any later version, while not claiming to be C++.
+
+Note that later versions (ECB_C11) remove core features again (for
+example, variable length arrays).
+
+=item ECB_C11
+
+True if the implementation claims to be compliant to C11 (ISO/IEC
+9899:2011) or any later version, while not claiming to be C++.
+
+=item ECB_CPP
+
+True if the implementation defines the C<__cplusplus__> macro to a true
+value, which is typically true for C++ compilers.
+
+=item ECB_CPP11
+
+True if the implementation claims to be compliant to ISO/IEC 14882:2011
+(C++11) or any later version.
+
+=item ECB_GCC_VERSION (major, minor)
+
+Expands to a true value (suitable for testing in by the preprocessor)
+if the compiler used is GNU C and the version is the given version, or
+higher.
+
+This macro tries to return false on compilers that claim to be GCC
+compatible but aren't.
+
+=item ECB_EXTERN_C
+
+Expands to C<extern "C"> in C++, and a simple C<extern> in C.
+
+This can be used to declare a single external C function:
+
+   ECB_EXTERN_C int printf (const char *format, ...);
+
+=item ECB_EXTERN_C_BEG / ECB_EXTERN_C_END
+
+These two macros can be used to wrap multiple C<extern "C"> definitions -
+they expand to nothing in C.
+
+They are most useful in header files:
+
+   ECB_EXTERN_C_BEG
+
+   int mycfun1 (int x);
+   int mycfun2 (int x);
+
+   ECB_EXTERN_C_END
+
+=item ECB_STDFP
+
+If this evaluates to a true value (suitable for testing in by the
+preprocessor), then C<float> and C<double> use IEEE 754 single/binary32
+and double/binary64 representations internally I<and> the endianness of
+both types match the endianness of C<uint32_t> and C<uint64_t>.
+
+This means you can just copy the bits of a C<float> (or C<double>) to an
+C<uint32_t> (or C<uint64_t>) and get the raw IEEE 754 bit representation
+without having to think about format or endianness.
+
+This is true for basically all modern platforms, although F<ecb.h> might
+not be able to deduce this correctly everywhere and might err on the safe
+side.
+
+=item ECB_AMD64, ECB_AMD64_X32
+
+These two macros are defined to C<1> on the x86_64/amd64 ABI and the X32
+ABI, respectively, and undefined elsewhere.
+
+The designers of the new X32 ABI for some inexplicable reason decided to
+make it look exactly like amd64, even though it's completely incompatible
+to that ABI, breaking about every piece of software that assumed that
+C<__x86_64> stands for, well, the x86-64 ABI, making these macros
+necessary.
+
+=back
+
+=head2 MACRO TRICKERY
+
+=over 4
+
+=item ECB_CONCAT (a, b)
+
+Expands any macros in C<a> and C<b>, then concatenates the result to form
+a single token. This is mainly useful to form identifiers from components,
+e.g.:
+
+   #define S1 str
+   #define S2 cpy
+
+   ECB_CONCAT (S1, S2)(dst, src); // == strcpy (dst, src);
+
+=item ECB_STRINGIFY (arg)
+
+Expands any macros in C<arg> and returns the stringified version of
+it. This is mainly useful to get the contents of a macro in string form,
+e.g.:
+
+   #define SQL_LIMIT 100
+   sql_exec ("select * from table limit " ECB_STRINGIFY (SQL_LIMIT));
+
+=item ECB_STRINGIFY_EXPR (expr)
+
+Like C<ECB_STRINGIFY>, but additionally evaluates C<expr> to make sure it
+is a valid expression. This is useful to catch typos or cases where the
+macro isn't available:
+
+   #include <errno.h>
+
+   ECB_STRINGIFY      (EDOM); // "33" (on my system at least)
+   ECB_STRINGIFY_EXPR (EDOM); // "33"
+
+   // now imagine we had a typo:
+
+   ECB_STRINGIFY      (EDAM); // "EDAM"
+   ECB_STRINGIFY_EXPR (EDAM); // error: EDAM undefined
+
+=back
+
+=head2 ATTRIBUTES
+
+A major part of libecb deals with additional attributes that can be
+assigned to functions, variables and sometimes even types - much like
+C<const> or C<volatile> in C. They are implemented using either GCC
+attributes or other compiler/language specific features. Attributes
+declarations must be put before the whole declaration:
+
+   ecb_const int mysqrt (int a);
+   ecb_unused int i;
+
+=over 4
+
+=item ecb_unused
+
+Marks a function or a variable as "unused", which simply suppresses a
+warning by GCC when it detects it as unused. This is useful when you e.g.
+declare a variable but do not always use it:
+
+  {
+    ecb_unused int var;
+
+    #ifdef SOMECONDITION
+       var = ...;
+       return var;
+    #else
+       return 0;
+    #endif
+  }
+
+=item ecb_deprecated
+
+Similar to C<ecb_unused>, but marks a function, variable or type as
+deprecated. This makes some compilers warn when the type is used.
+
+=item ecb_deprecated_message (message)
+
+Same as C<ecb_deprecated>, but if possible, the specified diagnostic is
+used instead of a generic depreciation message when the object is being
+used.
+
+=item ecb_inline
+
+Expands either to (a compiler-specific equivalent of) C<static inline> or
+to just C<static>, if inline isn't supported. It should be used to declare
+functions that should be inlined, for code size or speed reasons.
+
+Example: inline this function, it surely will reduce codesize.
+
+   ecb_inline int
+   negmul (int a, int b)
+   {
+     return - (a * b);
+   }
+
+=item ecb_noinline
+
+Prevents a function from being inlined - it might be optimised away, but
+not inlined into other functions. This is useful if you know your function
+is rarely called and large enough for inlining not to be helpful.
+
+=item ecb_noreturn
+
+Marks a function as "not returning, ever". Some typical functions that
+don't return are C<exit> or C<abort> (which really works hard to not
+return), and now you can make your own:
+
+   ecb_noreturn void
+   my_abort (const char *errline)
+   {
+     puts (errline);
+     abort ();
+   }
+
+In this case, the compiler would probably be smart enough to deduce it on
+its own, so this is mainly useful for declarations.
+
+=item ecb_restrict
+
+Expands to the C<restrict> keyword or equivalent on compilers that support
+them, and to nothing on others. Must be specified on a pointer type or
+an array index to indicate that the memory doesn't alias with any other
+restricted pointer in the same scope.
+
+Example: multiply a vector, and allow the compiler to parallelise the
+loop, because it knows it doesn't overwrite input values.
+
+   void
+   multiply (ecb_restrict float *src,
+             ecb_restrict float *dst,
+             int len, float factor)
+   {
+     int i;
+
+     for (i = 0; i < len; ++i)
+       dst [i] = src [i] * factor;
+   }
+
+=item ecb_const
+
+Declares that the function only depends on the values of its arguments,
+much like a mathematical function. It specifically does not read or write
+any memory any arguments might point to, global variables, or call any
+non-const functions. It also must not have any side effects.
+
+Such a function can be optimised much more aggressively by the compiler -
+for example, multiple calls with the same arguments can be optimised into
+a single call, which wouldn't be possible if the compiler would have to
+expect any side effects.
+
+It is best suited for functions in the sense of mathematical functions,
+such as a function returning the square root of its input argument.
+
+Not suited would be a function that calculates the hash of some memory
+area you pass in, prints some messages or looks at a global variable to
+decide on rounding.
+
+See C<ecb_pure> for a slightly less restrictive class of functions.
+
+=item ecb_pure
+
+Similar to C<ecb_const>, declares a function that has no side
+effects. Unlike C<ecb_const>, the function is allowed to examine global
+variables and any other memory areas (such as the ones passed to it via
+pointers).
+
+While these functions cannot be optimised as aggressively as C<ecb_const>
+functions, they can still be optimised away in many occasions, and the
+compiler has more freedom in moving calls to them around.
+
+Typical examples for such functions would be C<strlen> or C<memcmp>. A
+function that calculates the MD5 sum of some input and updates some MD5
+state passed as argument would I<NOT> be pure, however, as it would modify
+some memory area that is not the return value.
+
+=item ecb_hot
+
+This declares a function as "hot" with regards to the cache - the function
+is used so often, that it is very beneficial to keep it in the cache if
+possible.
+
+The compiler reacts by trying to place hot functions near to each other in
+memory.
+
+Whether a function is hot or not often depends on the whole program,
+and less on the function itself. C<ecb_cold> is likely more useful in
+practise.
+
+=item ecb_cold
+
+The opposite of C<ecb_hot> - declares a function as "cold" with regards to
+the cache, or in other words, this function is not called often, or not at
+speed-critical times, and keeping it in the cache might be a waste of said
+cache.
+
+In addition to placing cold functions together (or at least away from hot
+functions), this knowledge can be used in other ways, for example, the
+function will be optimised for size, as opposed to speed, and codepaths
+leading to calls to those functions can automatically be marked as if
+C<ecb_expect_false> had been used to reach them.
+
+Good examples for such functions would be error reporting functions, or
+functions only called in exceptional or rare cases.
+
+=item ecb_artificial
+
+Declares the function as "artificial", in this case meaning that this
+function is not really meant to be a function, but more like an accessor
+- many methods in C++ classes are mere accessor functions, and having a
+crash reported in such a method, or single-stepping through them, is not
+usually so helpful, especially when it's inlined to just a few instructions.
+
+Marking them as artificial will instruct the debugger about just this,
+leading to happier debugging and thus happier lives.
+
+Example: in some kind of smart-pointer class, mark the pointer accessor as
+artificial, so that the whole class acts more like a pointer and less like
+some C++ abstraction monster.
+
+  template<typename T>
+  struct my_smart_ptr
+  {
+    T *value;
+
+    ecb_artificial
+    operator T *()
+    {
+      return value;
+    }
+  };
+
+=back
+
+=head2 OPTIMISATION HINTS
+
+=over 4
+
+=item bool ecb_is_constant (expr)
+
+Returns true iff the expression can be deduced to be a compile-time
+constant, and false otherwise.
+
+For example, when you have a C<rndm16> function that returns a 16 bit
+random number, and you have a function that maps this to a range from
+0..n-1, then you could use this inline function in a header file:
+
+  ecb_inline uint32_t
+  rndm (uint32_t n)
+  {
+    return (n * (uint32_t)rndm16 ()) >> 16;
+  }
+
+However, for powers of two, you could use a normal mask, but that is only
+worth it if, at compile time, you can detect this case. This is the case
+when the passed number is a constant and also a power of two (C<n & (n -
+1) == 0>):
+
+  ecb_inline uint32_t
+  rndm (uint32_t n)
+  {
+    return is_constant (n) && !(n & (n - 1))
+      ? rndm16 () & (num - 1)
+      : (n * (uint32_t)rndm16 ()) >> 16;
+  }
+
+=item ecb_expect (expr, value)
+
+Evaluates C<expr> and returns it. In addition, it tells the compiler that
+the C<expr> evaluates to C<value> a lot, which can be used for static
+branch optimisations.
+
+Usually, you want to use the more intuitive C<ecb_expect_true> and
+C<ecb_expect_false> functions instead.
+
+=item bool ecb_expect_true (cond)
+
+=item bool ecb_expect_false (cond)
+
+These two functions expect a expression that is true or false and return
+C<1> or C<0>, respectively, so when used in the condition of an C<if> or
+other conditional statement, it will not change the program:
+
+  /* these two do the same thing */
+  if (some_condition) ...;
+  if (ecb_expect_true (some_condition)) ...;
+
+However, by using C<ecb_expect_true>, you tell the compiler that the
+condition is likely to be true (and for C<ecb_expect_false>, that it is
+unlikely to be true).
+
+For example, when you check for a null pointer and expect this to be a
+rare, exceptional, case, then use C<ecb_expect_false>:
+
+  void my_free (void *ptr)
+  {
+    if (ecb_expect_false (ptr == 0))
+      return;
+  }
+
+Consequent use of these functions to mark away exceptional cases or to
+tell the compiler what the hot path through a function is can increase
+performance considerably.
+
+You might know these functions under the name C<likely> and C<unlikely>
+- while these are common aliases, we find that the expect name is easier
+to understand when quickly skimming code. If you wish, you can use
+C<ecb_likely> instead of C<ecb_expect_true> and C<ecb_unlikely> instead of
+C<ecb_expect_false> - these are simply aliases.
+
+A very good example is in a function that reserves more space for some
+memory block (for example, inside an implementation of a string stream) -
+each time something is added, you have to check for a buffer overrun, but
+you expect that most checks will turn out to be false:
+
+  /* make sure we have "size" extra room in our buffer */
+  ecb_inline void
+  reserve (int size)
+  {
+    if (ecb_expect_false (current + size > end))
+      real_reserve_method (size); /* presumably noinline */
+  }
+
+=item ecb_assume (cond)
+
+Tries to tell the compiler that some condition is true, even if it's not
+obvious. This is not a function, but a statement: it cannot be used in
+another expression.
+
+This can be used to teach the compiler about invariants or other
+conditions that might improve code generation, but which are impossible to
+deduce form the code itself.
+
+For example, the example reservation function from the C<ecb_expect_false>
+description could be written thus (only C<ecb_assume> was added):
+
+  ecb_inline void
+  reserve (int size)
+  {
+    if (ecb_expect_false (current + size > end))
+      real_reserve_method (size); /* presumably noinline */
+
+    ecb_assume (current + size <= end);
+  }
+
+If you then call this function twice, like this:
+
+  reserve (10);
+  reserve (1);
+
+Then the compiler I<might> be able to optimise out the second call
+completely, as it knows that C<< current + 1 > end >> is false and the
+call will never be executed.
+
+=item ecb_unreachable ()
+
+This function does nothing itself, except tell the compiler that it will
+never be executed. Apart from suppressing a warning in some cases, this
+function can be used to implement C<ecb_assume> or similar functionality.
+
+=item ecb_prefetch (addr, rw, locality)
+
+Tells the compiler to try to prefetch memory at the given C<addr>ess
+for either reading (C<rw> = 0) or writing (C<rw> = 1). A C<locality> of
+C<0> means that there will only be one access later, C<3> means that
+the data will likely be accessed very often, and values in between mean
+something... in between. The memory pointed to by the address does not
+need to be accessible (it could be a null pointer for example), but C<rw>
+and C<locality> must be compile-time constants.
+
+This is a statement, not a function: you cannot use it as part of an
+expression.
+
+An obvious way to use this is to prefetch some data far away, in a big
+array you loop over. This prefetches memory some 128 array elements later,
+in the hope that it will be ready when the CPU arrives at that location.
+
+  int sum = 0;
+
+  for (i = 0; i < N; ++i)
+    {
+      sum += arr [i]
+      ecb_prefetch (arr + i + 128, 0, 0);
+    }
+
+It's hard to predict how far to prefetch, and most CPUs that can prefetch
+are often good enough to predict this kind of behaviour themselves. It
+gets more interesting with linked lists, especially when you do some fair
+processing on each list element:
+
+  for (node *n = start; n; n = n->next)
+    {
+      ecb_prefetch (n->next, 0, 0);
+      ... do medium amount of work with *n
+    }
+
+After processing the node, (part of) the next node might already be in
+cache.
+
+=back
+
+=head2 BIT FIDDLING / BIT WIZARDRY
+
+=over 4
+
+=item bool ecb_big_endian ()
+
+=item bool ecb_little_endian ()
+
+These two functions return true if the byte order is big endian
+(most-significant byte first) or little endian (least-significant byte
+first) respectively.
+
+On systems that are neither, their return values are unspecified.
+
+=item int ecb_ctz32 (uint32_t x)
+
+=item int ecb_ctz64 (uint64_t x)
+
+Returns the index of the least significant bit set in C<x> (or
+equivalently the number of bits set to 0 before the least significant bit
+set), starting from 0. If C<x> is 0 the result is undefined.
+
+For smaller types than C<uint32_t> you can safely use C<ecb_ctz32>.
+
+For example:
+
+  ecb_ctz32 (3) = 0
+  ecb_ctz32 (6) = 1
+
+=item bool ecb_is_pot32 (uint32_t x)
+
+=item bool ecb_is_pot64 (uint32_t x)
+
+Returns true iff C<x> is a power of two or C<x == 0>.
+
+For smaller types than C<uint32_t> you can safely use C<ecb_is_pot32>.
+
+=item int ecb_ld32 (uint32_t x)
+
+=item int ecb_ld64 (uint64_t x)
+
+Returns the index of the most significant bit set in C<x>, or the number
+of digits the number requires in binary (so that C<< 2**ld <= x <
+2**(ld+1) >>). If C<x> is 0 the result is undefined. A common use case is
+to compute the integer binary logarithm, i.e. C<floor (log2 (n))>, for
+example to see how many bits a certain number requires to be encoded.
+
+This function is similar to the "count leading zero bits" function, except
+that that one returns how many zero bits are "in front" of the number (in
+the given data type), while C<ecb_ld> returns how many bits the number
+itself requires.
+
+For smaller types than C<uint32_t> you can safely use C<ecb_ld32>.
+
+=item int ecb_popcount32 (uint32_t x)
+
+=item int ecb_popcount64 (uint64_t x)
+
+Returns the number of bits set to 1 in C<x>.
+
+For smaller types than C<uint32_t> you can safely use C<ecb_popcount32>.
+
+For example:
+
+  ecb_popcount32 (7) = 3
+  ecb_popcount32 (255) = 8
+
+=item uint8_t  ecb_bitrev8  (uint8_t  x)
+
+=item uint16_t ecb_bitrev16 (uint16_t x)
+
+=item uint32_t ecb_bitrev32 (uint32_t x)
+
+Reverses the bits in x, i.e. the MSB becomes the LSB, MSB-1 becomes LSB+1
+and so on.
+
+Example:
+
+   ecb_bitrev8 (0xa7) = 0xea
+   ecb_bitrev32 (0xffcc4411) = 0x882233ff
+
+=item uint32_t ecb_bswap16 (uint32_t x)
+
+=item uint32_t ecb_bswap32 (uint32_t x)
+
+=item uint64_t ecb_bswap64 (uint64_t x)
+
+These functions return the value of the 16-bit (32-bit, 64-bit) value
+C<x> after reversing the order of bytes (0x11223344 becomes 0x44332211 in
+C<ecb_bswap32>).
+
+=item uint8_t  ecb_rotl8  (uint8_t  x, unsigned int count)
+
+=item uint16_t ecb_rotl16 (uint16_t x, unsigned int count)
+
+=item uint32_t ecb_rotl32 (uint32_t x, unsigned int count)
+
+=item uint64_t ecb_rotl64 (uint64_t x, unsigned int count)
+
+=item uint8_t  ecb_rotr8  (uint8_t  x, unsigned int count)
+
+=item uint16_t ecb_rotr16 (uint16_t x, unsigned int count)
+
+=item uint32_t ecb_rotr32 (uint32_t x, unsigned int count)
+
+=item uint64_t ecb_rotr64 (uint64_t x, unsigned int count)
+
+These two families of functions return the value of C<x> after rotating
+all the bits by C<count> positions to the right (C<ecb_rotr>) or left
+(C<ecb_rotl>).
+
+Current GCC versions understand these functions and usually compile them
+to "optimal" code (e.g. a single C<rol> or a combination of C<shld> on
+x86).
+
+=back
+
+=head2 FLOATING POINT FIDDLING
+
+=over 4
+
+=item ECB_INFINITY [-UECB_NO_LIBM]
+
+Evaluates to positive infinity if supported by the platform, otherwise to
+a truly huge number.
+
+=item ECB_NAN [-UECB_NO_LIBM]
+
+Evaluates to a quiet NAN if supported by the platform, otherwise to
+C<ECB_INFINITY>.
+
+=item float ecb_ldexpf (float x, int exp) [-UECB_NO_LIBM]
+
+Same as C<ldexpf>, but always available.
+
+=item uint32_t ecb_float_to_binary16  (float  x) [-UECB_NO_LIBM]
+
+=item uint32_t ecb_float_to_binary32  (float  x) [-UECB_NO_LIBM]
+
+=item uint64_t ecb_double_to_binary64 (double x) [-UECB_NO_LIBM]
+
+These functions each take an argument in the native C<float> or C<double>
+type and return the IEEE 754 bit representation of it (binary16/half,
+binary32/single or binary64/double precision).
+
+The bit representation is just as IEEE 754 defines it, i.e. the sign bit
+will be the most significant bit, followed by exponent and mantissa.
+
+This function should work even when the native floating point format isn't
+IEEE compliant, of course at a speed and code size penalty, and of course
+also within reasonable limits (it tries to convert NaNs, infinities and
+denormals, but will likely convert negative zero to positive zero).
+
+On all modern platforms (where C<ECB_STDFP> is true), the compiler should
+be able to optimise away this function completely.
+
+These functions can be helpful when serialising floats to the network - you
+can serialise the return value like a normal uint16_t/uint32_t/uint64_t.
+
+Another use for these functions is to manipulate floating point values
+directly.
+
+Silly example: toggle the sign bit of a float.
+
+   /* On gcc-4.7 on amd64, */
+   /* this results in a single add instruction to toggle the bit, and 4 extra */
+   /* instructions to move the float value to an integer register and back. */
+
+   x = ecb_binary32_to_float (ecb_float_to_binary32 (x) ^ 0x80000000U)
+
+=item float  ecb_binary16_to_float  (uint16_t x) [-UECB_NO_LIBM]
+
+=item float  ecb_binary32_to_float  (uint32_t x) [-UECB_NO_LIBM]
+
+=item double ecb_binary64_to_double (uint64_t x) [-UECB_NO_LIBM]
+
+The reverse operation of the previous function - takes the bit
+representation of an IEEE binary16, binary32 or binary64 number (half,
+single or double precision) and converts it to the native C<float> or
+C<double> format.
+
+This function should work even when the native floating point format isn't
+IEEE compliant, of course at a speed and code size penalty, and of course
+also within reasonable limits (it tries to convert normals and denormals,
+and might be lucky for infinities, and with extraordinary luck, also for
+negative zero).
+
+On all modern platforms (where C<ECB_STDFP> is true), the compiler should
+be able to optimise away this function completely.
+
+=item uint16_t ecb_binary32_to_binary16 (uint32_t x)
+
+=item uint32_t ecb_binary16_to_binary32 (uint16_t x)
+
+Convert a IEEE binary32/single precision to binary16/half format, and vice
+versa, handling all details (round-to-nearest-even, subnormals, infinity
+and NaNs) correctly.
+
+These are functions are available under C<-DECB_NO_LIBM>, since
+they do not rely on the platform floating point format. The
+C<ecb_float_to_binary16> and C<ecb_binary16_to_float> functions are
+usually what you want.
+
+=back
+
+=head2 ARITHMETIC
+
+=over 4
+
+=item x = ecb_mod (m, n)
+
+Returns C<m> modulo C<n>, which is the same as the positive remainder
+of the division operation between C<m> and C<n>, using floored
+division. Unlike the C remainder operator C<%>, this function ensures that
+the return value is always positive and that the two numbers I<m> and
+I<m' = m + i * n> result in the same value modulo I<n> - in other words,
+C<ecb_mod> implements the mathematical modulo operation, which is missing
+in the language.
+
+C<n> must be strictly positive (i.e. C<< >= 1 >>), while C<m> must be
+negatable, that is, both C<m> and C<-m> must be representable in its
+type (this typically excludes the minimum signed integer value, the same
+limitation as for C</> and C<%> in C).
+
+Current GCC versions compile this into an efficient branchless sequence on
+almost all CPUs.
+
+For example, when you want to rotate forward through the members of an
+array for increasing C<m> (which might be negative), then you should use
+C<ecb_mod>, as the C<%> operator might give either negative results, or
+change direction for negative values:
+
+   for (m = -100; m <= 100; ++m)
+     int elem = myarray [ecb_mod (m, ecb_array_length (myarray))];
+
+=item x = ecb_div_rd (val, div)
+
+=item x = ecb_div_ru (val, div)
+
+Returns C<val> divided by C<div> rounded down or up, respectively.
+C<val> and C<div> must have integer types and C<div> must be strictly
+positive. Note that these functions are implemented with macros in C
+and with function templates in C++.
+
+=back
+
+=head2 UTILITY
+
+=over 4
+
+=item element_count = ecb_array_length (name)
+
+Returns the number of elements in the array C<name>. For example:
+
+  int primes[] = { 2, 3, 5, 7, 11 };
+  int sum = 0;
+
+  for (i = 0; i < ecb_array_length (primes); i++)
+    sum += primes [i];
+
+=back
+
+=head2 SYMBOLS GOVERNING COMPILATION OF ECB.H ITSELF
+
+These symbols need to be defined before including F<ecb.h> the first time.
+
+=over 4
+
+=item ECB_NO_THREADS
+
+If F<ecb.h> is never used from multiple threads, then this symbol can
+be defined, in which case memory fences (and similar constructs) are
+completely removed, leading to more efficient code and fewer dependencies.
+
+Setting this symbol to a true value implies C<ECB_NO_SMP>.
+
+=item ECB_NO_SMP
+
+The weaker version of C<ECB_NO_THREADS> - if F<ecb.h> is used from
+multiple threads, but never concurrently (e.g. if the system the program
+runs on has only a single CPU with a single core, no hyperthreading and so
+on), then this symbol can be defined, leading to more efficient code and
+fewer dependencies.
+
+=item ECB_NO_LIBM
+
+When defined to C<1>, do not export any functions that might introduce
+dependencies on the math library (usually called F<-lm>) - these are
+marked with [-UECB_NO_LIBM].
+
+=back
+
+=head1 UNDOCUMENTED FUNCTIONALITY
+
+F<ecb.h> is full of undocumented functionality as well, some of which is
+intended to be internal-use only, some of which we forgot to document, and
+some of which we hide because we are not sure we will keep the interface
+stable.
+
+While you are welcome to rummage around and use whatever you find useful
+(we can't stop you), keep in mind that we will change undocumented
+functionality in incompatible ways without thinking twice, while we are
+considerably more conservative with documented things.
+
+=head1 AUTHORS
+
+C<libecb> is designed and maintained by:
+
+   Emanuele Giaquinta <e.giaquinta@glauco.it>
+   Marc Alexander Lehmann <schmorp@schmorp.de>
+
+
